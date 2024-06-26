@@ -1,11 +1,13 @@
-
 package main
 
 import (
+    "os"
+    "bufio"
     "fmt"
     "strings"
     "log"
     "github.com/gocolly/colly"
+    "regexp"
     "github.com/charmbracelet/huh"
 )
 
@@ -28,7 +30,6 @@ func main() {
         "User-Agent":                "Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0",
         "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language":           "en-US,en;q=0.5",
-        "Accept-Encoding":           "gzip, deflate, br, zstd",
         "Connection":                "keep-alive",
         "Referer":                   "https://chapmanganato.to/manga-aa951409",
         "Cookie":                    "ci_session=Uj%2FMmsw3snmXDdm%2FAxXvAh30dOWXFaZawBkdrdGCA0eWDAxwI77%2FgH%2BU6TRe4RzUikBDsDMIYQTSDN%2FZ8O388NJzeHTdOsCLpCa6MoysPwk0g9fI1ntRO8qn0%2B3zZHWg6%2Be1SrOYgs0KxZU6wS9lo%2F3dej81aq1Vw%2Baz7EBeSsrYnVVqdcATFl7PhnVh65J3QEvJa8bMKCkeXsdyuGJNCOkGpkkCXlemCTNguS%2F71i2qygsuZa5G4XJqTaSBDWN4%2FzhdrcgGhggfc5wtQIsYT1qYEsXcWXcq2J32x%2BnHMiTp%2FSc9rxbm4jvPnaf8tZOG%2FVBcvbOk3ZvrjxVQiG6bY0V6uYmqM4Fm6eWaj5%2Fhik9dwWz5BJISf%2B4lJJJadzg8CcVIJht5ABZAKrytGkFpKtFhHiXFnKqW4HfV%2Fqt9HoY%3Da3468db3c15b1d69fbb668ff5a3f14ce1c5bffc6; panel-fb-comment=fb-comment-title-show",
@@ -41,8 +42,7 @@ func main() {
         "TE":                        "trailers",
     }
 
-
-    c := colly.NewCollector()
+   c := colly.NewCollector()
     baseURL := "https://mangakakalot.com/search/story/"
     var mangaName string
     form := huh.NewForm(
@@ -167,26 +167,28 @@ func main() {
     	    }
     }
 
-    var imageURLs []string
-    c.OnHTML("*", func(e *colly.HTMLElement) {
-	    //ImageURL := e.ChildAttr("img","src")
-	    //imageURLs = append(imageURLs, ImageURL)
-	    fmt.Println(e.DOM.Html())
-	    fmt.Println("hello")
-    })
+    var links []string
+    //var imageURLs []string
+    c.OnHTML("div.container-chapter-reader", func(e *colly.HTMLElement) {
+	    htmlContent, err := e.DOM.Html()
+	    pattern := `<img[^>]+src="(https:\/\/[^"]+\.(webp|jpg))"`
+	    if err != nil {
+		log.Fatal(err)
+	    }
 
-    c.OnResponse(func(r *colly.Response) {
-        fmt.Println("Response Status Code:", r.StatusCode)
+	    re := regexp.MustCompile(pattern)
+	    matches := re.FindAllStringSubmatch(htmlContent, -1)
 
-        // Check if the request was successful (status code 200)
-        if r.StatusCode == 200 {
-            // Process the response here
-            fmt.Println("Successful response")
-	    fmt.Println("HTML:", r.Headers)
-        } else {
-            fmt.Println("Request failed with status code:", r.StatusCode)
-        }
-    })
+	    for _, match := range matches {
+		if len(match) > 1 {
+			link := match[1]
+			links = append(links, link)
+		}
+	    }
+
+	    fmt.Println("Links array:", links)
+	    })
+
 
     c.OnRequest(func(r *colly.Request) {
 	for key, value := range headers {
@@ -195,8 +197,33 @@ func main() {
         fmt.Println("Visiting", r.URL)
     })
 
-
-    selectedChapterURL = "https://chapmanganelo.com/manga-aa88620/chapter-1118"
     c.Visit(selectedChapterURL)
-    fmt.Println(imageURLs)
+    
+    fileName := "output.txt"
+
+	file, err := os.Create(fileName)
+	if err != nil {
+		fmt.Printf("Failed to create file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+
+	for _, line := range links {
+		_, err := writer.WriteString(line + "\n")
+		if err != nil {
+			fmt.Printf("Failed to write to file: %v\n", err)
+			return
+		}
+	}
+
+	if err := writer.Flush(); err != nil {
+		fmt.Printf("Failed to flush writer: %v\n", err)
+	} else {
+		fmt.Println("Array successfully written to file.")
+	}
 }
+
+
+
